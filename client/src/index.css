@@ -1,0 +1,49 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #1f2328;
+  background: #ffffff;
+}
+
+body {
+  margin: 0;
+}
+
+.header {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid #d0d7de;
+}
+
+.logo {
+  font-weight: 700;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
+}
+
+.nav a {
+  color: #0969da;
+  text-decoration: none;
+}
+
+.nav a.active {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.content {
+  padding: 24px;
+  max-width: 960px;
+}
+
+.status-up {
+  color: #1a7f37;
+}
+
+.status-down {
+  color: #cf222e;
+}
