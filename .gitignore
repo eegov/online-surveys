@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Build output and reports
+server/target/
+client/dist/
+client/coverage/
+client/reports/
+metrics.json
+metrics.md
+
+# Local environment
+.env
+*.local
+
+# IDE
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
