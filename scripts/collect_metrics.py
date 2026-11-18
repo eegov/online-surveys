@@ -17,7 +17,10 @@ import datetime as dt
 import glob
 import json
 import os
+import statistics
 import subprocess
+import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -123,7 +126,7 @@ def _git(*args: str) -> str:
 
 def lines_of_code() -> dict | None:
     try:
-        files = _git("ls-files", "server/src", "client/src").split()
+        files = [f for f in _git("ls-files", "-z", "server/src", "client/src").split("\0") if f]
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
     code = tests = 0
@@ -140,12 +143,27 @@ def lines_of_code() -> dict | None:
 # ---------- Git-метрики ----------
 
 def previous_tag(tag: str | None) -> str | None:
+    """Тег, с которого начинается период метрик.
+
+    Для релиза этапа (v0.2.0) это предыдущий релиз этапа без суффикса, чтобы промежуточные
+    pre-release (v0.2.0-rc.1) не обрезали период. Для pre-release это любой предыдущий тег.
+    Без тега (ручной запуск) это последний тег.
+    """
     # versionsort.suffix: v0.1.0-alpha.1 считается раньше v0.1.0, как в SemVer.
     tags = _git("-c", "versionsort.suffix=-", "tag", "--list", "v*", "--sort=-v:refname").split()
-    if tag in tags:
-        later = tags[tags.index(tag) + 1:]
-        return later[0] if later else None
-    return tags[0] if tags else None
+    if tag not in tags:
+        return tags[0] if tags else None
+    earlier = tags[tags.index(tag) + 1:]
+    if "-" not in tag:
+        earlier = [t for t in earlier if "-" not in t]
+    return earlier[0] if earlier else None
+
+
+def period_start(prev: str | None) -> dt.datetime | None:
+    """Момент предыдущего тега: метрики GitHub считаются с него."""
+    if not prev:
+        return None
+    return _ts(_git("log", "-1", "--format=%cI", prev).strip())
 
 
 # Файлы, которые пишет инструмент, а не человек: в размер коммита не входят,
@@ -157,8 +175,7 @@ def _is_generated(path: str) -> bool:
     return path.rsplit("/", 1)[-1] in GENERATED
 
 
-def git_metrics(tag: str | None) -> dict:
-    prev = previous_tag(tag)
+def git_metrics(prev: str | None) -> dict:
     rng = f"{prev}..HEAD" if prev else "HEAD"
     log = _git("log", rng, "--no-merges", "--numstat", "--format=@%H %ct")
     commits: list[tuple[int, int]] = []  # (timestamp, changed lines)
@@ -180,7 +197,7 @@ def git_metrics(tag: str | None) -> dict:
         "commits": len(commits),
         "commits_per_week": round(len(commits) / weeks, 1),
         "commit_size_avg": round(sum(sizes) / len(sizes), 1),
-        "commit_size_median": sizes[len(sizes) // 2],
+        "commit_size_median": statistics.median(sizes),
     }
 
 
@@ -202,17 +219,48 @@ def _ts(value: str) -> dt.datetime:
     return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
 
 
-def github_metrics() -> dict | None:
+def _pages(path: str, key: str | None = None, max_pages: int = 10):
+    """Постранично отдаёт элементы списка из GitHub API (по 100 на страницу)."""
+    sep = "&" if "?" in path else "?"
+    for page in range(1, max_pages + 1):
+        data = _api(f"{path}{sep}per_page=100&page={page}")
+        items = data[key] if key else data
+        yield from items
+        if len(items) < 100:
+            return
+
+
+def github_metrics(since: dt.datetime | None) -> dict | None:
+    """Метрики CI и pull requests за период этапа: с момента предыдущего тега."""
     if not (os.environ.get("GITHUB_TOKEN") and os.environ.get("GITHUB_REPOSITORY")):
         return None
-    runs = _api("/actions/workflows/ci.yml/runs?status=completed&per_page=100")["workflow_runs"]
+    try:
+        runs_path = "/actions/workflows/ci.yml/runs?status=completed"
+        if since:
+            created = ">=" + since.astimezone(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            runs_path += "&created=" + urllib.parse.quote(created)
+        runs = list(_pages(runs_path, "workflow_runs"))
+        prs = []
+        for p in _pages("/pulls?state=all&sort=created&direction=desc"):
+            if since and _ts(p["created_at"]) < since:
+                break
+            prs.append(p)
+    except (urllib.error.URLError, KeyError, ValueError) as e:
+        # Метрики GitHub необязательны: без них релиз всё равно публикуется.
+        print(f"GitHub API metrics skipped: {e}")
+        return None
     finished = [r for r in runs if r["conclusion"] in ("success", "failure")]
     ok = [r for r in finished if r["conclusion"] == "success"]
     durations = [(_ts(r["updated_at"]) - _ts(r["run_started_at"])).total_seconds() for r in ok]
-    prs = _api("/pulls?state=all&per_page=100")
     merged = [p for p in prs if p.get("merged_at")]
-    lifetimes = [(_ts(p["merged_at"]) - _ts(p["created_at"])).total_seconds() / 3600 for p in merged]
+    # Время жизни считается по веткам задач (PR в dev), релизные PR dev -> master не входят.
+    lifetimes = [
+        (_ts(p["merged_at"]) - _ts(p["created_at"])).total_seconds() / 3600
+        for p in merged
+        if p["base"]["ref"] == "dev"
+    ]
     return {
+        "since": since.isoformat() if since else None,
         "ci_runs": len(finished),
         "ci_success_rate": pct(len(ok), len(finished)),
         "ci_duration_avg_s": round(sum(durations) / len(durations)) if durations else None,
@@ -239,10 +287,12 @@ def collect(with_git: bool, with_github: bool, tag: str | None) -> dict:
         "client_tests": junit(["client/reports/junit.xml"]),
         "lines_of_code": lines_of_code(),
     }
+    prev = previous_tag(tag) if (with_git or with_github) else None
+    metrics["previous_tag"] = prev
     if with_git:
-        metrics["git"] = git_metrics(tag)
+        metrics["git"] = git_metrics(prev)
     if with_github:
-        metrics["github"] = github_metrics()
+        metrics["github"] = github_metrics(period_start(prev))
     return metrics
 
 
@@ -295,6 +345,9 @@ def markdown(m: dict) -> str:
         add("Время жизни ветки (от PR до слияния), ч", gh["branch_lifetime_avg_h"], "GitHub API")
 
     title = f"## Метрики качества{' ' + m['tag'] if m.get('tag') else ''}\n\n"
+    if m.get("git") or m.get("github"):
+        prev = m.get("previous_tag")
+        title += f"Метрики процесса и CI за период {'с тега ' + prev if prev else 'с начала проекта'}.\n\n"
     if not rows:
         return title + "Отчётов для метрик не найдено.\n"
     table = "| Метрика | Значение | Источник |\n|---|---|---|\n"

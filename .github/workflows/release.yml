@@ -1,8 +1,8 @@
 name: Release
 
-# Релиз создаётся тегом vX.Y.Z на завершение этапа разработки (см. CONTRIBUTING.md).
-# Workflow заново проверяет и собирает проект, снимает метрики качества на момент этапа
-# и публикует GitHub Release с артефактами и таблицей метрик.
+# Релиз создаётся тегом vX.Y.Z на master по завершении этапа разработки (см. CONTRIBUTING.md).
+# Job measure заново проверяет и собирает проект и снимает метрики качества на момент этапа,
+# job publish публикует GitHub Release с артефактами и таблицей метрик.
 # Запуск вручную (workflow_dispatch) только снимает метрики, без релиза.
 on:
   push:
@@ -10,18 +10,32 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: read
-  pull-requests: read
+  contents: read
 
 jobs:
-  release:
-    name: release
+  measure:
+    name: measure
     runs-on: ubuntu-latest
+    # Права только на чтение: здесь выполняются npm ci и плагины Maven (сторонний код).
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Tag must point to a commit on master
+        if: github.ref_type == 'tag'
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "OK: $GITHUB_REF_NAME is on master"
+          else
+            echo "::error::Tag $GITHUB_REF_NAME is not on master. Merge dev into master first, then tag master."
+            exit 1
+          fi
 
       - uses: actions/setup-java@v6
         with:
@@ -50,7 +64,7 @@ jobs:
 
       - name: Collect quality metrics
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
           python3 scripts/collect_metrics.py --git --github ${TAG:+--tag "$TAG"} \
@@ -65,13 +79,27 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: release-${{ github.ref_name }}
+          name: release-files
           path: release/
+          if-no-files-found: error
+
+  publish:
+    name: publish
+    needs: measure
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    # Право записи нужно только здесь, и здесь не выполняется код зависимостей.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-files
+          path: release
 
       - name: Publish GitHub Release
-        if: github.ref_type == 'tag'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         # Текст релиза: таблица метрик, под ней список PR, который GitHub генерирует сам.
         # Тег с суффиксом (v0.1.0-alpha.1) публикуется как pre-release.
@@ -79,8 +107,9 @@ jobs:
           prerelease=()
           if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
           gh release create "$TAG" release/* \
+            --repo "$GITHUB_REPOSITORY" \
             --title "$TAG" \
-            --notes-file metrics.md \
+            --notes-file release/metrics.md \
             --generate-notes \
             --verify-tag \
             "${prerelease[@]}"
