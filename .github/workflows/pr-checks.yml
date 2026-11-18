@@ -1,7 +1,7 @@
 name: PR checks
 
 # Проверки процесса для каждого pull request: сообщения коммитов, заголовок PR, имя ветки.
-# Имена jobs (commitlint, pr-title, branch-name) указаны в защите ветки main как обязательные.
+# Имена jobs (commitlint, pr-title, branch-name) указаны в защите ветки master как обязательные.
 on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
@@ -31,7 +31,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
-  # При squash-слиянии в main попадает заголовок PR, поэтому он проверяется теми же правилами.
+  # При squash-слиянии в master попадает заголовок PR, поэтому он проверяется теми же правилами.
   pr-title:
     name: pr-title
     runs-on: ubuntu-latest
@@ -54,13 +54,27 @@ jobs:
     name: branch-name
     runs-on: ubuntu-latest
     steps:
-      - name: Branch name is ONL-<task>-<short-description>
+      # Схема веток: <тип>/ONL-<задача>-<описание> -> dev -> master.
+      - name: Branch name and PR direction
         env:
           BRANCH: ${{ github.head_ref }}
+          BASE: ${{ github.base_ref }}
         run: |
-          if [[ "$BRANCH" =~ ^ONL-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
-            echo "Branch name OK: $BRANCH"
+          if [[ "$BASE" == "master" ]]; then
+            if [[ "$BRANCH" == "dev" ]]; then
+              echo "OK: dev -> master"
+              exit 0
+            fi
+            echo "::error::Only dev can be merged into master, got '$BRANCH'"
+            exit 1
+          fi
+          if [[ "$BASE" != "dev" ]]; then
+            echo "::error::Pull requests go to dev (task branches) or master (dev only), got base '$BASE'"
+            exit 1
+          fi
+          if [[ "$BRANCH" =~ ^(feature|fix|chore)/ONL-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+            echo "OK: $BRANCH -> dev"
           else
-            echo "::error::Branch '$BRANCH' does not match ONL-<task number>-<kebab-case description>, e.g. ONL-5-server-skeleton"
+            echo "::error::Branch '$BRANCH' does not match <feature|fix|chore>/ONL-<task number>-<kebab-case description>, e.g. feature/ONL-5-server-skeleton"
             exit 1
           fi
