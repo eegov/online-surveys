@@ -31,7 +31,7 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: npx commitlint --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
-  # При squash-слиянии в master попадает заголовок PR, поэтому он проверяется теми же правилами.
+  # При squash-слиянии в dev сообщением коммита становится заголовок PR, поэтому он проверяется теми же правилами.
   pr-title:
     name: pr-title
     runs-on: ubuntu-latest
@@ -45,10 +45,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Check PR title
+      # Проверяется то, что реально станет заголовком коммита: GitHub дописывает « (#N)».
+      # Тело squash-коммита в настройках репозитория пустое (squash_merge_commit_message = BLANK).
+      - name: Check PR title as the squash commit header
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
-        run: printf '%s\n' "$PR_TITLE" | npx commitlint --verbose
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: printf '%s (#%s)\n' "$PR_TITLE" "$PR_NUMBER" | npx commitlint --verbose
 
   branch-name:
     name: branch-name

@@ -1,13 +1,27 @@
-## Задача
+## Task
 
+<!-- YouGile task, e.g. ONL-10. Branch: <feature|fix|chore>/ONL-<N>-<description>. -->
 ONL-
 
-## Что сделано
+## What I changed
 
--
+<!-- Explain the change in your own words. -->
 
-## Как проверено
+## How I checked it
 
-- [ ] Критерии готовности задачи из YouGile выполнены
-- [ ] Проверки CI зелёные (lint, test, build, commitlint, pr-title, branch-name)
-- [ ] Ручная проверка сценария:
+<!-- List the commands you ran or the scenario you tried. -->
+
+---
+
+<!-- Required disclosure. Keep this line unchanged. -->
+**Everything below this line was written by an LLM, not by me.**
+
+---
+
+## Implementation notes
+
+<!-- Add the LLM-generated technical summary here. -->
+
+## Risks and follow-ups
+
+<!-- Add any remaining issues identified by the LLM here. -->

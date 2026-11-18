@@ -7,7 +7,7 @@ Web-приложение для создания и проведения онл�
 
 | Папка | Содержимое |
 |---|---|
-| `server/` | сервер: Java 21, Spring Boot 3, PostgreSQL, Flyway, сборка Maven |
+| `server/` | сервер: Java 21, Spring Boot 4, PostgreSQL, Flyway, сборка Maven |
 | `client/` | клиент: React, TypeScript, Vite, React Router |
 | `scripts/` | скрипт сбора метрик качества |
 | `.github/workflows/` | пайплайны CI, проверки PR, релиз |
