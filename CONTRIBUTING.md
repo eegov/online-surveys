@@ -57,25 +57,32 @@ ci: собирать jar только после прохождения тест
 Используется упрощённый Git Flow с тремя видами веток:
 
 ```
-ONL-5-server-skeleton ─┐
-ONL-6-client-skeleton ─┼─(squash)─> dev ─(merge commit)─> master ─> тег vX.Y.Z
-ONL-10-survey-crud ────┘
+feature/ONL-5-server-skeleton ─┐
+feature/ONL-10-survey-crud ────┼─(squash)─> dev ─(merge commit)─> master ─> тег vX.Y.Z
+fix/ONL-45-empty-answer ───────┘
 ```
 
 | Ветка | Назначение | Откуда берёт изменения |
 |---|---|---|
 | `master` | выпущенные версии; каждый релиз помечен тегом | только PR из `dev` |
 | `dev` | интеграция: здесь собираются готовые задачи этапа | только PR из веток задач |
-| `ONL-<N>-<описание>` | одна задача из YouGile | создаётся от `dev`, удаляется после слияния |
+| `<тип>/ONL-<N>-<описание>` | одна задача из YouGile | создаётся от `dev`, удаляется после слияния |
 
-Имя ветки задачи: `ONL-<номер задачи в YouGile>-<краткое-описание>` в kebab-case, например
-`ONL-5-server-skeleton`, `ONL-10-survey-crud`. Ошибка, найденная после слияния, оформляется задачей-дефектом
-в YouGile и тоже получает свою ветку от `dev`. Имя ветки и направление PR проверяет job `branch-name`.
+Имя ветки задачи: `<тип>/ONL-<номер задачи в YouGile>-<краткое-описание>`, описание в kebab-case.
+Номер связывает ветку и её PR с карточкой на доске YouGile, тип показывает характер работы:
+
+| Тип | Когда | Пример |
+|---|---|---|
+| `feature` | функция или часть системы из списка задач | `feature/ONL-10-survey-crud` |
+| `fix` | задача-дефект: ошибка, найденная после слияния | `fix/ONL-45-empty-answer` |
+| `chore` | инфраструктура, CI, документация, общие работы этапа | `chore/ONL-36-branching-model` |
+
+Имя ветки и направление PR проверяет job `branch-name`.
 
 ```bash
 git switch dev
 git pull
-git switch -c ONL-10-survey-crud
+git switch -c feature/ONL-10-survey-crud
 ```
 
 Отдельных веток `release/*` и `hotfix/*` нет: разработчик один, и выпуск этапа сводится к PR из `dev`
@@ -85,7 +92,7 @@ git switch -c ONL-10-survey-crud
 
 Задача попадает в `dev` только через pull request:
 
-1. Ветка отправляется на GitHub: `git push -u origin ONL-10-survey-crud`.
+1. Ветка отправляется на GitHub: `git push -u origin feature/ONL-10-survey-crud`.
 2. Открывается PR в `dev`. Заголовок PR оформляется как сообщение коммита, в описании по шаблону указываются
    задача, что сделано и как проверено.
 3. Проходят обязательные проверки.

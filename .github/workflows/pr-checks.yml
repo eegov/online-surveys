@@ -54,7 +54,7 @@ jobs:
     name: branch-name
     runs-on: ubuntu-latest
     steps:
-      # Схема веток: ONL-<задача>-<описание> -> dev -> master.
+      # Схема веток: <тип>/ONL-<задача>-<описание> -> dev -> master.
       - name: Branch name and PR direction
         env:
           BRANCH: ${{ github.head_ref }}
@@ -72,9 +72,9 @@ jobs:
             echo "::error::Pull requests go to dev (task branches) or master (dev only), got base '$BASE'"
             exit 1
           fi
-          if [[ "$BRANCH" =~ ^ONL-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
+          if [[ "$BRANCH" =~ ^(feature|fix|chore)/ONL-[0-9]+-[a-z0-9]+(-[a-z0-9]+)*$ ]]; then
             echo "OK: $BRANCH -> dev"
           else
-            echo "::error::Branch '$BRANCH' does not match ONL-<task number>-<kebab-case description>, e.g. ONL-5-server-skeleton"
+            echo "::error::Branch '$BRANCH' does not match <feature|fix|chore>/ONL-<task number>-<kebab-case description>, e.g. feature/ONL-5-server-skeleton"
             exit 1
           fi
