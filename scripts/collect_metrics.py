@@ -148,6 +148,15 @@ def previous_tag(tag: str | None) -> str | None:
     return tags[0] if tags else None
 
 
+# Файлы, которые пишет инструмент, а не человек: в размер коммита не входят,
+# иначе один package-lock.json даёт тысячи строк и метрика перестаёт что-то значить.
+GENERATED = ("package-lock.json", "mvnw", "mvnw.cmd", "maven-wrapper.properties")
+
+
+def _is_generated(path: str) -> bool:
+    return path.rsplit("/", 1)[-1] in GENERATED
+
+
 def git_metrics(tag: str | None) -> dict:
     prev = previous_tag(tag)
     rng = f"{prev}..HEAD" if prev else "HEAD"
@@ -157,8 +166,8 @@ def git_metrics(tag: str | None) -> dict:
         if line.startswith("@"):
             commits.append((int(line.split()[1]), 0))
         elif line.strip() and commits:
-            added, deleted, _ = line.split("\t", 2)
-            if added != "-":
+            added, deleted, path = line.split("\t", 2)
+            if added != "-" and not _is_generated(path):
                 ts, size = commits[-1]
                 commits[-1] = (ts, size + int(added) + int(deleted))
     if not commits:
@@ -210,7 +219,7 @@ def github_metrics() -> dict | None:
         "prs_open": sum(1 for p in prs if p["state"] == "open"),
         "prs_closed": sum(1 for p in prs if p["state"] == "closed"),
         "prs_merged": len(merged),
-        "branch_lifetime_avg_h": round(sum(lifetimes) / len(lifetimes), 1) if lifetimes else None,
+        "branch_lifetime_avg_h": round(sum(lifetimes) / len(lifetimes), 2) if lifetimes else None,
     }
 
 
